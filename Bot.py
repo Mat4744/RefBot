@@ -8,9 +8,13 @@ from discord.ext import commands
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
+# Intents Setup
 intents = discord.Intents.default()
-intents.messages, intents.guilds, intents.members = True, True, True
+intents.message_content = True  # To process messages
+intents.guilds = True
+intents.members = True
 
+# Bot Setup
 bot = commands.Bot(command_prefix='*', intents=intents)
 
 @bot.event
@@ -21,4 +25,13 @@ async def on_ready():
         if channel:
             await channel.send("Hello Evershade! RefBot is now online.")
 
+@bot.command()
+async def ping(ctx):
+    await ctx.send('Pong!')
+
+@bot.event
+async def on_command_error(ctx, error):
+    await ctx.send(f"An error occurred: {error}")
+
+# Run the Bot
 bot.run(TOKEN)
