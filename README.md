@@ -123,7 +123,7 @@ The Help command offers an interactive guide to RefBot’s capabilities. Users c
 - `Matchmaking`: Steps to find and engage in matches.
 - `RefMe`: How to Self-Ref
 
-### **8. New Character Command (`NewChar`)**
+### **9. New Character Command (`NewChar`)**
 This command streamlines the addition of new characters:
 
 - Prompts users for the same details as `RosterSetup`.
