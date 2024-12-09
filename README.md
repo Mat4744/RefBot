@@ -125,6 +125,5 @@ The Help command offers an interactive guide to RefBot’s capabilities. Users c
 
 ### **9. New Character Command (`NewChar`)**
 This command streamlines the addition of new characters:
-
 - Prompts users for the same details as `RosterSetup`.
 - Integrates new entries seamlessly into the existing roster.
