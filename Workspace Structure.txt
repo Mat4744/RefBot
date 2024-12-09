@@ -1,0 +1,17 @@
+DnDRefBot/
+├── bot.py              # Main entry point for the bot
+├── .env                # Environment file for sensitive data (e.g., tokens)
+├── README.md           # Description, setup, and usage instructions
+├── requirements.txt    # List of dependencies
+├── commands/           # All bot commands, organized as cogs
+│   ├── __init__.py     # Marks this folder as a Python package
+│   ├── dice.py         # Dice rolling commands
+│   └── stats.py        # Character stats commands
+├── data/               # Data storage (e.g., JSON files for character stats)
+│   ├── characters.json # Example data file
+├── utils/              # Utility functions and helper modules
+│   └── dice_helpers.py # Helper functions for dice mechanics
+├── logs/               # Log files for debugging and tracking bot activity
+│   └── bot.log         # Example log file
+└── tests/              # Test scripts for ensuring features work
+    └── test_dice.py    # Unit tests for dice rolling logic

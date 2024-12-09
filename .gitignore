@@ -1,0 +1,19 @@
+# Byte-compiled files
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+
+# Cache directories
+__pycache__/
+
+# IDE settings (e.g., VS Code, PyCharm)
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
