@@ -64,10 +64,6 @@ async def on_ready():
 
 # Simple bot answering command test
 @bot.command()
-async def ping(ctx):
-    await ctx.send('Pong!')
-
-@bot.command()
 async def setup(ctx):
     user_id = str(ctx.author.id)
     username = ctx.author.name
@@ -83,35 +79,81 @@ async def setup(ctx):
         # If the user doesn't exist, add them to the database
         cursor.execute('INSERT INTO Users (user_id, username) VALUES (?, ?)', (user_id, username))
         conn.commit()
-        await ctx.send(f"Welcome to the server, {username}! Let's set up your roster.")
+        await ctx.send(f"Hello there, {username}! Welcome to 5e Fight Club. Let's set up your roster, shall we?")
 
-        # Request character details
-        await ctx.send("Please provide your characters in the following format:\n`Name, Level, Resurrections, Description`\nSeparate multiple characters with a semicolon `;`.")
+        character_list = []
+        invalid_attempts = 0
 
         def check(m):
             return m.author == ctx.author and m.channel == ctx.channel
 
-        try:
-            message = await bot.wait_for('message', check=check, timeout=60.0)
-            character_entries = message.content.split(';')
+        while True:
+            try:
+                # Ask for character details
+                await ctx.send("Provide your character in the following format:\n`Name, Level, Resurrections, Description`\nType `done` when you're finished adding characters.")
+                message = await bot.wait_for('message', check=check, timeout=60.0)
 
-            for entry in character_entries:
-                parts = [p.strip() for p in entry.split(',')]
+                if message.content.lower() == 'done':
+                    if not character_list:
+                        await ctx.send("You didn't add any characters. Start over if you wish to try again!")
+                        conn.rollback()
+                        return
+                    else:
+                        # Confirm and save characters to the database
+                        for character in character_list:
+                            cursor.execute(
+                                'INSERT INTO Characters (user_id, name, level, resurrections, description) VALUES (?, ?, ?, ?, ?)',
+                                (user_id, character['name'], character['level'], character['resurrections'], character['description'])
+                            )
+                        conn.commit()
+                        await ctx.send("Your roster has been successfully set up!")
+                        break
+
+                # Parse character input
+                parts = [p.strip() for p in message.content.split(',')]
                 if len(parts) == 4:
                     name, level, resurrections, description = parts
-                    cursor.execute(
-                        'INSERT INTO Characters (user_id, name, level, resurrections, description) VALUES (?, ?, ?, ?, ?)',
-                        (user_id, name, int(level), int(resurrections), description)
-                    )
-                else:
-                    await ctx.send(f"Invalid format for character: `{entry}`. Please try again.")
-                    conn.rollback()
-                    return
+                    character = {
+                        'name': name,
+                        'level': int(level),
+                        'resurrections': int(resurrections),
+                        'description': description
+                    }
+                    character_list.append(character)
 
-            conn.commit()
-            await ctx.send("Your roster has been successfully set up!")
-        except Exception as e:
-            await ctx.send("You took too long to respond or an error occurred. Please try again.")
+                    # Reset invalid attempts counter
+                    invalid_attempts = 0
+
+                    # Display the growing character list
+                    roster_preview = "\n".join(
+                        [f"{i+1}. {c['name']} (Level: {c['level']}, Resurrections: {c['resurrections']}, Description: {c['description']})"
+                         for i, c in enumerate(character_list)]
+                    )
+                    await ctx.send(f"Current Roster:\n{roster_preview}\nAdd another character or type `done` to finish.")
+                else:
+                    # Increment invalid attempts
+                    invalid_attempts += 1
+
+                    # Custom responses for repeated mistakes
+                    if invalid_attempts == 1:
+                        await ctx.send("Invalid format! Please use: `Name, Level, Resurrections, Description`.")
+                    elif invalid_attempts == 2:
+                        await ctx.send("Invalid format, again! Please use my format?")
+                    elif invalid_attempts == 3:
+                        await ctx.send("Please use the provided format!")
+                    elif invalid_attempts == 4:
+                        await ctx.send("The format. Please.")
+                    elif invalid_attempts == 5:
+                        await ctx.send("I-... This is just on purpose isn't it?")
+                    else:
+                        await ctx.send("You know what, screw this. We start over.")
+                        conn.rollback()
+                        return
+
+            except Exception as e:
+                await ctx.send("Ah! I got distracted, or maybe an error occurred. Either way, please try again!")
+                conn.rollback()
+                return
     else:
         # If the user exists, redirect them to EditRoster
         await ctx.send(f"You already have a roster set up, {username}. Did you mean to use the `EditRoster` command?")
