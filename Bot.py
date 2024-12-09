@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
+from initialize_database import initialize_database
 
 # Token Retrieval
 load_dotenv()
@@ -17,6 +18,10 @@ intents.members = True
 # Bot Setup
 bot = commands.Bot(command_prefix='*', intents=intents)
 
+# Bot Database Setup
+initialize_database()
+
+# Bot Startup
 @bot.event
 async def on_ready():
     print(f'{bot.user} is now online!')
@@ -25,13 +30,15 @@ async def on_ready():
         if channel:
             await channel.send("Hello Evershade! RefBot is now online.")
 
-@bot.command()
-async def ping(ctx):
-    await ctx.send('Pong!')
-
+# Error
 @bot.event
 async def on_command_error(ctx, error):
     await ctx.send(f"An error occurred: {error}")
+
+# Simple bot answering command test
+@bot.command()
+async def ping(ctx):
+    await ctx.send('Pong!')
 
 # Run the Bot
 bot.run(TOKEN)
