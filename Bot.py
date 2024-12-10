@@ -4,161 +4,121 @@ from dotenv import load_dotenv
 import discord
 from discord.ext import commands
 
-# Token Retrieval
+# Token and Database Setup
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-
-# SQLite Database Setup
 DB_PATH = 'refbot.db'
 
-# Intents Setup
+# Intents
 intents = discord.Intents.default()
-intents.message_content = True  # To process messages
-intents.guilds = True
-intents.members = True
+intents.message_content = intents.guilds = intents.members = True
 
+# Database Initialization
 def initialize_database():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS Users (
+                            user_id TEXT PRIMARY KEY, 
+                            username TEXT NOT NULL, 
+                            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS Characters (
+                            character_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id TEXT, 
+                            name TEXT NOT NULL, 
+                            level INTEGER DEFAULT 1, 
+                            resurrections INTEGER DEFAULT 0, 
+                            description TEXT, 
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                            FOREIGN KEY (user_id) REFERENCES Users(user_id))''')
+        conn.commit()
 
-    # Create Users table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS Users (
-        user_id TEXT PRIMARY KEY,
-        username TEXT NOT NULL,
-        joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-
-    # Create Characters table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS Characters (
-        character_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT,
-        name TEXT NOT NULL,
-        level INTEGER DEFAULT 1,
-        resurrections INTEGER DEFAULT 0,
-        description TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES Users(user_id)
-    )
-    ''')
-
-    conn.commit()
-    conn.close()
-
-# Initialize database
 initialize_database()
 
 # Bot Setup
 bot = commands.Bot(command_prefix='*', intents=intents)
 
-# Bot Startup
 @bot.event
 async def on_ready():
-    print(f'{bot.user} is now online!')
+    print(f'{bot.user} is online!')
     for guild in bot.guilds:
         channel = next((c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None)
-        if channel:
-            await channel.send("Hello Evershade! RefBot is now online.")
+        if channel: await channel.send("Hello Evershade! RefBot is now online.")
 
-# Simple bot answering command test
 @bot.command()
 async def setup(ctx):
-    user_id = str(ctx.author.id)
-    username = ctx.author.name
-
+    user_id, username = str(ctx.author.id), ctx.author.name
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Check if the user exists in the database
     cursor.execute('SELECT * FROM Users WHERE user_id = ?', (user_id,))
-    user = cursor.fetchone()
-
-    if not user:
-        # If the user doesn't exist, add them to the database
+    user_exists = cursor.fetchone()
+    if not user_exists:
         cursor.execute('INSERT INTO Users (user_id, username) VALUES (?, ?)', (user_id, username))
         conn.commit()
-        await ctx.send(f"Hello there, {username}! Welcome to 5e Fight Club. Let's set up your roster, shall we?")
+        await ctx.send(f"Welcome, {username}! Let's set up your roster.")
+    else:
+        cursor.execute('SELECT * FROM Characters WHERE user_id = ?', (user_id,))
+        if cursor.fetchall():
+            await ctx.send(f"Roster already exists, {username}. Try `EditRoster`.")
+            return
+        await ctx.send(f"You exist in the system but have no characters yet. Let's fix that!")
 
-        character_list = []
-        invalid_attempts = 0
+    def check(m): return m.author == ctx.author and m.channel == ctx.channel
+    character_list, invalid_attempts = [], 0
 
-        def check(m):
-            return m.author == ctx.author and m.channel == ctx.channel
-
-        while True:
-            try:
-                # Ask for character details
-                await ctx.send("Provide your character in the following format:\n`Name, Level, Resurrections, Description`\nType `done` when you're finished adding characters.")
-                message = await bot.wait_for('message', check=check, timeout=60.0)
-
-                if message.content.lower() == 'done':
-                    if not character_list:
-                        await ctx.send("You didn't add any characters. Start over if you wish to try again!")
-                        conn.rollback()
-                        return
-                    else:
-                        # Confirm and save characters to the database
-                        for character in character_list:
-                            cursor.execute(
-                                'INSERT INTO Characters (user_id, name, level, resurrections, description) VALUES (?, ?, ?, ?, ?)',
-                                (user_id, character['name'], character['level'], character['resurrections'], character['description'])
-                            )
-                        conn.commit()
-                        await ctx.send("Your roster has been successfully set up!")
-                        break
-
-                # Parse character input
-                parts = [p.strip() for p in message.content.split(',')]
-                if len(parts) == 4:
-                    name, level, resurrections, description = parts
-                    character = {
-                        'name': name,
-                        'level': int(level),
-                        'resurrections': int(resurrections),
-                        'description': description
-                    }
-                    character_list.append(character)
-
-                    # Reset invalid attempts counter
+    while True:
+        try:
+            await ctx.send("Add characters as `Name, Level, Resurrections` or type `done` to finish.")
+            msg = await bot.wait_for('message', check=check, timeout=60.0)
+            if msg.content.lower() == 'done':
+                if not character_list:
+                    await ctx.send("No characters added. Try again later!")
+                    conn.rollback()
+                    return
+                try:
+                    cursor.executemany(
+                        '''INSERT INTO Characters (user_id, name, level, resurrections) VALUES (?, ?, ?, ?)''',
+                        [(user_id, c['name'], c['level'], c['resurrections']) for c in character_list])
+                    conn.commit()
+                    await ctx.send("Roster saved! Here's the final list:\n" + 
+                                   "\n".join(f"{i+1}. {c['name']} (Level: {c['level']}, Resurrections: {c['resurrections']})"
+                                             for i, c in enumerate(character_list)))
+                except Exception as e:
+                    await ctx.send(f"Error saving roster: {e}")
+                    conn.rollback()
+                break
+            parts = [p.strip() for p in msg.content.split(',')]
+            if len(parts) == 3:
+                try:
+                    name, level, resurrections = parts[0], int(parts[1]), int(parts[2])
+                    character_list.append({'name': name, 'level': level, 'resurrections': resurrections})
                     invalid_attempts = 0
-
-                    # Display the growing character list
-                    roster_preview = "\n".join(
-                        [f"{i+1}. {c['name']} (Level: {c['level']}, Resurrections: {c['resurrections']}, Description: {c['description']})"
-                         for i, c in enumerate(character_list)]
-                    )
-                    await ctx.send(f"Current Roster:\n{roster_preview}\nAdd another character or type `done` to finish.")
-                else:
-                    # Increment invalid attempts
+                    await ctx.send("Current roster:\n" + 
+                                   "\n".join(f"{i+1}. {c['name']} (Level: {c['level']}, Resurrections: {c['resurrections']})"
+                                             for i, c in enumerate(character_list)))
+                except ValueError:
                     invalid_attempts += 1
+            else:
+                invalid_attempts += 1
 
-                    # Custom responses for repeated mistakes
-                    if invalid_attempts == 1:
-                        await ctx.send("Invalid format! Please use: `Name, Level, Resurrections, Description`.")
-                    elif invalid_attempts == 2:
-                        await ctx.send("Invalid format, again! Please use my format?")
-                    elif invalid_attempts == 3:
-                        await ctx.send("Please use the provided format!")
-                    elif invalid_attempts == 4:
-                        await ctx.send("The format. Please.")
-                    elif invalid_attempts == 5:
-                        await ctx.send("I-... This is just on purpose isn't it?")
-                    else:
-                        await ctx.send("You know what, screw this. We start over.")
-                        conn.rollback()
-                        return
-
-            except Exception as e:
-                await ctx.send("Ah! I got distracted, or maybe an error occurred. Either way, please try again!")
+            messages = [
+                "Invalid format! Please use: `Name, Level, Resurrections`.",
+                "Invalid format, again! Please use my format?",
+                "Please use the provided format!",
+                "The format, sir/ma'am.",
+                "This bitch... The format, follow the format!",
+                "You know what, screw you. I'm deleting your characters."
+            ]
+            if invalid_attempts > 5:
+                await ctx.send(messages[5])
                 conn.rollback()
                 return
-    else:
-        # If the user exists, redirect them to EditRoster
-        await ctx.send(f"You already have a roster set up, {username}. Did you mean to use the `EditRoster` command?")
+            await ctx.send(messages[min(invalid_attempts - 1, 4)])
 
+        except Exception as e:
+            await ctx.send(f"Error occurred: {e}. Try again!")
+            conn.rollback()
+            return
     conn.close()
 
-# Run the Bot
 bot.run(TOKEN)
